@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <limits.h>
+#include <math.h>
 
 #include "msgpuck.h"
 #include "test.h"
@@ -581,7 +582,7 @@ test_format(void)
 	data1_end = mp_encode_array(data1_end, 2);
 	data1_end = mp_encode_str(data1_end, "ABC", 3);
 	data1_end = mp_encode_uint(data1_end, 11);
-	uint32_t data1_len = data1_end - data1;
+	size_t data1_len = data1_end - data1;
 	assert(data1_len <= sizeof(data1));
 
 	char data2[32];
@@ -589,7 +590,7 @@ test_format(void)
 	data2_end = mp_encode_int(data2_end, -1234567890);
 	data2_end = mp_encode_str(data2_end, "DEFGHIJKLMN", 11);
 	data2_end = mp_encode_uint(data2_end, 321);
-	uint32_t data2_len = data2_end - data2;
+	size_t data2_len = data2_end - data2;
 	assert(data2_len <= sizeof(data2));
 
 	fmt = "%d NIL [%d %b %b] this is test"
@@ -699,7 +700,7 @@ test_format(void)
 
 	c = p;
 	ok(mp_check(&c, e) == 0, "check");
-	ok((c - p == data1_len) &&
+	ok(((size_t)(c - p) == data1_len) &&
 	   memcmp(p, data1, data1_len) == 0, "compare");
 	p = c;
 
@@ -986,7 +987,10 @@ test_mp_check()
 	return check_plan();
 }
 
-#define test_read_number(_func, _type, _mp_type, _val, _success) do {	\
+#define int_eq(a, b) (((a) - (b)) == 0)
+#define double_eq(a, b) (fabs((a) - (b)) < 1e-15)
+
+#define test_read_number(_func, _eq,  _type, _mp_type, _val, _success) do {	\
 	const char *s = #_func "(mp_encode_" #_mp_type "(" #_val "))";	\
 	const char *d1 = data;						\
 	const char *d2 = mp_encode_##_mp_type(data, _val);		\
@@ -995,16 +999,16 @@ test_mp_check()
 	if (_success) {							\
 		is(ret, 0, "%s check success", s);			\
 		is(d1, d2, "%s check pos advanced", s);			\
-		ok(v - _val == 0, "%s check result", s);		\
+		ok(_eq(v, _val), "%s check result", s);		\
 	} else {							\
 		is(ret, -1, "%s check fail", s);			\
 		is(d1, data, "%s check pos unchanged", s);		\
 	}								\
 } while (0)
 
-#define test_read_int32(...)	test_read_number(mp_read_int32, int32_t, __VA_ARGS__)
-#define test_read_int64(...)	test_read_number(mp_read_int64, int64_t, __VA_ARGS__)
-#define test_read_double(...)	test_read_number(mp_read_double, double, __VA_ARGS__)
+#define test_read_int32(...)	test_read_number(mp_read_int32, int_eq, int32_t, __VA_ARGS__)
+#define test_read_int64(...)	test_read_number(mp_read_int64, int_eq, int64_t, __VA_ARGS__)
+#define test_read_double(...)	test_read_number(mp_read_double, double_eq, double, __VA_ARGS__)
 
 static int
 test_numbers()
@@ -1055,9 +1059,48 @@ test_numbers()
 	return check_plan();
 }
 
+static int
+test_overflow()
+{
+	plan(4);
+	header();
+
+	const char *chk;
+	char *d;
+	d = data;
+	chk = data;
+	d = mp_encode_array(d, 1);
+	d = mp_encode_array(d, UINT32_MAX);
+	is(mp_check(&chk, d), 1, "mp_check array overflow")
+
+	d = data;
+	chk = data;
+	d = mp_encode_array(d, 1);
+	d = mp_encode_map(d, UINT32_MAX);
+	is(mp_check(&chk, d), 1, "mp_check map overflow")
+
+	d = data;
+	chk = data;
+	d = mp_encode_array(d, 2);
+	d = mp_encode_str(d, "", 0);
+	d = mp_encode_strl(d, UINT32_MAX);
+	is(mp_check(&chk, d), 1, "mp_check str overflow")
+
+	d = data;
+	chk = data;
+	d = mp_encode_array(d, 2);
+	d = mp_encode_bin(d, "", 0);
+	d = mp_encode_binl(d, UINT32_MAX);
+	is(mp_check(&chk, d), 1, "mp_check bin overflow")
+
+	footer();
+	return check_plan();
+}
+
+
 int main()
 {
-	plan(19);
+	plan(20);
 	test_uints();
 	test_ints();
 	test_bools();
@@ -1077,6 +1120,7 @@ int main()
 	test_mp_print();
 	test_mp_check();
 	test_numbers();
+	test_overflow();
 
 	return check_plan();
 }
