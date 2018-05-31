@@ -1,8 +1,10 @@
 project(msgpuck)
 cmake_minimum_required(VERSION 2.8.5)
 
+if(CMAKE_COMPILER_IS_GNUCXX)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99 -fPIC -fstrict-aliasing")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Wall -Wextra -Werror")
+endif(CMAKE_COMPILER_IS_GNUCXX)
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING
