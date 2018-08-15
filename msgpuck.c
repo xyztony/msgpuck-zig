@@ -130,7 +130,7 @@ mp_vformat(char *data, size_t data_size, const char *format, va_list vl)
 				const char *p = va_arg(vl, const char *);
 				const char *end = p;
 				mp_next(&end);
-				uint32_t len = end - p;
+				uint32_t len = (uint32_t)(end - p);
 				result += len;
 				if (result <= data_size) {
 					memcpy(data, p, len);

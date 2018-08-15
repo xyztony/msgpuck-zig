@@ -188,10 +188,16 @@ extern "C" {
 #ifndef _WIN32
 MP_PROTO void
 mp_unreachable(void) __attribute__((noreturn));
+#else
+static void __declspec(noreturn) mp_unreachable(void) {
+	assert(0);
+}
 #endif
+#if 0
 MP_PROTO void
 mp_unreachable(void) { assert(0); abort(); }
 #define mp_unreachable() (assert(0))
+#endif
 #endif
 
 #define mp_identity(x) (x) /* just to simplify mp_load/mp_store macroses */
@@ -1945,7 +1951,8 @@ mp_read_double(const char **data, double *ret)
 		*ret = (int32_t) mp_load_u32(&p);
 		break;
 	case 0xd3:
-		val = ival = (int64_t) mp_load_u64(&p);
+		ival = (int64_t) mp_load_u64(&p);
+		val = (double) ival;
 		if ((int64_t)val != ival)
 			return -1;
 		*ret = val;
@@ -1960,7 +1967,8 @@ mp_read_double(const char **data, double *ret)
 		*ret = mp_load_u32(&p);
 		break;
 	case 0xcf:
-		val = uval = mp_load_u64(&p);
+		uval = mp_load_u64(&p);
+		val = (double)uval;
 		if ((uint64_t)val != uval)
 			return -1;
 		*ret = val;
