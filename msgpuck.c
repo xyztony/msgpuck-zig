@@ -232,27 +232,31 @@ mp_format(char *data, size_t data_size, const char *format, ...)
 	return res;
 }
 
-#define MP_PRINT(SELF, PRINTF) \
+#define MP_PRINT(PRINTF) \
 {										\
-	switch (mp_typeof(**data)) {						\
+	struct mp_frame frames[MP_PRINT_MAX_DEPTH];				\
+	struct mp_stack stack;							\
+	mp_stack_create(&stack, MP_PRINT_MAX_DEPTH, frames);			\
+next:										\
+	switch (mp_typeof(*data)) {						\
 	case MP_NIL:								\
-		mp_decode_nil(data);						\
+		mp_decode_nil(&data);						\
 		PRINTF("null");							\
 		break;								\
 	case MP_UINT:								\
-		PRINTF("%llu", (unsigned long long) mp_decode_uint(data));	\
+		PRINTF("%llu", (unsigned long long) mp_decode_uint(&data));	\
 		break;								\
 	case MP_INT:								\
-		PRINTF("%lld", (long long) mp_decode_int(data));		\
+		PRINTF("%lld", (long long) mp_decode_int(&data));		\
 		break;								\
 	case MP_STR:								\
 	case MP_BIN:								\
 	{									\
-		uint32_t len = mp_typeof(**data) == MP_STR ?			\
-			mp_decode_strl(data) : mp_decode_binl(data);		\
+		uint32_t len = mp_typeof(*data) == MP_STR ?			\
+			mp_decode_strl(&data) : mp_decode_binl(&data);		\
 		PRINTF("\"");							\
 		const char *s;							\
-		for (s = *data; s < *data + len; s++) {				\
+		for (s = data; s < data + len; s++) {				\
 			unsigned char c = (unsigned char ) *s;			\
 			if (c < 128 && mp_char2escape[c] != NULL) {		\
 				/* Escape character */				\
@@ -262,73 +266,59 @@ mp_format(char *data, size_t data_size, const char *format, ...)
 			}							\
 		}								\
 		PRINTF("\"");							\
-		*data += len;							\
+		data += len;							\
 		break;								\
 	}									\
 	case MP_ARRAY:								\
-	{									\
-		uint32_t count = mp_decode_array(data);				\
-		PRINTF("[");							\
-		uint32_t i;							\
-		for (i = 0; i < count; i++) {					\
-			if (i)							\
-				PRINTF(", ");					\
-			SELF(data);						\
-		}								\
-		PRINTF("]");							\
-		break;								\
-	}									\
 	case MP_MAP:								\
 	{									\
-		uint32_t count = mp_decode_map(data);				\
-		PRINTF("{");							\
-		uint32_t i;							\
-		for (i = 0; i < count; i++) {					\
-			if (i)							\
-				PRINTF(", ");					\
-			SELF(data);						\
-			PRINTF(": ");						\
-			SELF(data);						\
+		enum mp_type type = mp_typeof(*data);				\
+		if (!mp_stack_is_full(&stack)) {				\
+			uint32_t count = type == MP_ARRAY ?			\
+					 mp_decode_array(&data) :		\
+					 2 * mp_decode_map(&data);		\
+			mp_stack_push(&stack, type, count);			\
+		} else {							\
+			/*							\
+			* Skip msgpack items that do not			\
+			* fit onto the stack.					\
+			*/							\
+			PRINTF(type == MP_ARRAY ? "[...]" : "{...}");		\
+			mp_next(&data);						\
 		}								\
-		PRINTF("}");							\
 		break;								\
 	}									\
 	case MP_BOOL:								\
-		PRINTF(mp_decode_bool(data) ? "true" : "false");		\
+		PRINTF(mp_decode_bool(&data) ? "true" : "false");		\
 		break;								\
 	case MP_FLOAT:								\
-		PRINTF("%g", mp_decode_float(data));				\
+		PRINTF("%g", mp_decode_float(&data));				\
 		break;								\
 	case MP_DOUBLE:								\
-		PRINTF("%lg", mp_decode_double(data));				\
+		PRINTF("%lg", mp_decode_double(&data));				\
 		break;								\
 	case MP_EXT:								\
-		mp_next(data);							\
+		mp_next(&data);							\
 		PRINTF("undefined");						\
 		break;								\
 	default:								\
 		mp_unreachable();						\
 		return -1;							\
 	}									\
-}
-
-static inline int
-mp_fprint_internal(FILE *file, const char **data)
-{
-	int total_bytes = 0;
-#define HANDLE(FUN, ...) do {							\
-	int bytes = FUN(file, __VA_ARGS__);					\
-	if (mp_unlikely(bytes < 0))						\
-		return -1;							\
-	total_bytes += bytes;							\
-} while (0)
-#define PRINT(...) HANDLE(fprintf, __VA_ARGS__)
-#define SELF(...) HANDLE(mp_fprint_internal, __VA_ARGS__)
-MP_PRINT(SELF, PRINT)
-#undef HANDLE
-#undef SELF
-#undef PRINT
-	return total_bytes;
+	while (!mp_stack_is_empty(&stack)) {					\
+		enum mp_type type = mp_stack_type(&stack);			\
+		int curr = mp_stack_advance(&stack);				\
+		if (curr == 0 || mp_stack_count(&stack) == 0)			\
+			PRINTF(type == MP_ARRAY ? "[" : "{");			\
+		if (curr == -1) {						\
+			PRINTF(type == MP_ARRAY ? "]" : "}");			\
+			mp_stack_pop(&stack);					\
+			continue;						\
+		} else if (curr != 0) {						\
+			PRINTF(type == MP_MAP && curr % 2 == 1 ? ": " : ", ");	\
+		}								\
+		goto next;							\
+	}									\
 }
 
 int
@@ -336,16 +326,24 @@ mp_fprint(FILE *file, const char *data)
 {
 	if (!file)
 		file = stdout;
-	int res = mp_fprint_internal(file, &data);
-	return res;
+	int total_bytes = 0;
+#define PRINT(...) do {								\
+	int bytes = fprintf(file, __VA_ARGS__);					\
+	if (mp_unlikely(bytes < 0))						\
+		return -1;							\
+	total_bytes += bytes;							\
+} while (0)
+	MP_PRINT(PRINT)
+#undef PRINT
+	return total_bytes;
 }
 
-static inline int
-mp_snprint_internal(char *buf, int size, const char **data)
+int
+mp_snprint(char *buf, int size, const char *data)
 {
 	int total_bytes = 0;
-#define HANDLE(FUN, ...) do {							\
-	int bytes = FUN(buf, size, __VA_ARGS__);				\
+#define PRINT(...) do {								\
+	int bytes = snprintf(buf, size, __VA_ARGS__);				\
 	if (mp_unlikely(bytes < 0))						\
 		return -1;							\
 	total_bytes += bytes;							\
@@ -358,18 +356,8 @@ mp_snprint_internal(char *buf, int size, const char **data)
 		size = 0;							\
 	}									\
 } while (0)
-#define PRINT(...) HANDLE(snprintf, __VA_ARGS__)
-#define SELF(...) HANDLE(mp_snprint_internal, __VA_ARGS__)
-MP_PRINT(SELF, PRINT)
-#undef HANDLE
-#undef SELF
+	MP_PRINT(PRINT)
 #undef PRINT
 	return total_bytes;
 }
 #undef MP_PRINT
-
-int
-mp_snprint(char *buf, int size, const char *data)
-{
-	return mp_snprint_internal(buf, size, &data);
-}

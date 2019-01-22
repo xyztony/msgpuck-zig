@@ -30,6 +30,7 @@
  * SUCH DAMAGE.
  */
 
+#include <assert.h>
 #include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
@@ -765,15 +766,16 @@ test_format(void)
 int
 test_mp_print()
 {
-	plan(10);
+	plan(12);
 	header();
 
 	char msgpack[128];
 	char *d = msgpack;
-	d = mp_encode_array(d, 6);
+	d = mp_encode_array(d, 8);
 	d = mp_encode_int(d, -5);
 	d = mp_encode_uint(d, 42);
 	d = mp_encode_str(d, "kill bill", 9);
+	d = mp_encode_array(d, 0);
 	d = mp_encode_map(d, 6);
 	d = mp_encode_str(d, "bool true", 9);
 	d = mp_encode_bool(d, true);
@@ -792,13 +794,14 @@ test_mp_print()
 	*d++ = 0;
 	char bin[] = "\x12test\x34\b\t\n\"bla\\-bla\"\f\r";
 	d = mp_encode_bin(d, bin, sizeof(bin));
+	d = mp_encode_map(d, 0);
 	assert(d <= msgpack + sizeof(msgpack));
 
 	const char *expected =
-		"[-5, 42, \"kill bill\", "
+		"[-5, 42, \"kill bill\", [], "
 		"{\"bool true\": true, \"bool false\": false, \"null\": null, "
 		"\"float\": 3.14, \"double\": 3.14, 100: 500}, undefined, "
-		"\"\\u0012test4\\b\\t\\n\\\"bla\\\\-bla\\\"\\f\\r\\u0000\"]";
+		"\"\\u0012test4\\b\\t\\n\\\"bla\\\\-bla\\\"\\f\\r\\u0000\", {}]";
 	int esize = strlen(expected);
 
 	char result[256];
@@ -839,6 +842,36 @@ test_mp_print()
 	int rc = mp_fprint(stdin, msgpack);
 	is(rc, -1, "mp_fprint I/O error");
 
+	/* Test mp_snprint max nesting depth. */
+	int mp_buff_sz = MP_PRINT_MAX_DEPTH * mp_sizeof_array(1) +
+			 mp_sizeof_uint(1);
+	int exp_str_sz = 2 * (MP_PRINT_MAX_DEPTH + 1) + 3 + 1;
+	char *mp_buff = malloc(mp_buff_sz);
+	char *exp_str = malloc(exp_str_sz);
+	char *decoded = malloc(exp_str_sz);
+	char *buff_wptr = mp_buff;
+	char *exp_str_wptr = exp_str;
+	for (int i = 0; i <= 2 * (MP_PRINT_MAX_DEPTH + 1); i++) {
+		int exp_str_rest = exp_str_sz - (exp_str_wptr - exp_str);
+		assert(exp_str_rest > 0);
+		if (i < MP_PRINT_MAX_DEPTH + 1) {
+			buff_wptr = mp_encode_array(buff_wptr, 1);
+			rc = snprintf(exp_str_wptr, exp_str_rest, "[");
+		} else if (i == MP_PRINT_MAX_DEPTH + 1) {
+			buff_wptr = mp_encode_uint(buff_wptr, 1);
+			rc = snprintf(exp_str_wptr, exp_str_rest, "...");
+		} else {
+			rc = snprintf(exp_str_wptr, exp_str_rest, "]");
+		}
+		exp_str_wptr += rc;
+	}
+	assert(exp_str_wptr + 1 == exp_str + exp_str_sz);
+	rc = mp_snprint(decoded, exp_str_sz, mp_buff);
+	ok(rc == exp_str_sz - 1, "mp_snprint max nesting depth return value");
+	ok(strcmp(decoded, exp_str) == 0, "mp_snprint max nesting depth result");
+	free(decoded);
+	free(exp_str);
+	free(mp_buff);
 	footer();
 	return check_plan();
 }

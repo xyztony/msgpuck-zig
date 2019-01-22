@@ -1199,6 +1199,133 @@ mp_next(const char **data);
 MP_PROTO int
 mp_check(const char **data, const char *end);
 
+/**
+ * The maximum msgpack nesting depth supported by mp_snprint().
+ * Everything beyond that will be omitted (replaced with "...").
+ */
+#ifndef MP_PRINT_MAX_DEPTH
+#define MP_PRINT_MAX_DEPTH 32
+#endif
+
+/** Message pack MP_MAP or MP_ARRAY container descriptor. */
+struct mp_frame {
+	/**
+	 * MP frame type calculated with mp_typeof().
+	 */
+	enum mp_type type;
+	/**
+	 * Total number of items in MP_MAP or MP_ARRAY container
+	 * calculated with mp_decode_map() or mp_decode_array().
+	 */
+	int count;
+	/**
+	 * Index of currently processing item. Must be less than
+	 * mp_frame::count member.
+	 */
+	int curr;
+};
+
+/**
+ * Stack of map/array descriptors mp_frame to do complex msgpack
+ * parse. The structure is needed in order to facilitate
+ * decoding nested MP_ARRAY and MP_MAP msgpack containers without
+ * recursion. This allows to determine that the parsing of the
+ * current container is complete.
+*/
+struct mp_stack {
+	/**
+	 * The maximum stack depth.
+	 */
+	int size;
+	/**
+	 * Count of used stack frames. Corresponds to the index
+	 * in the array to perform the push operation. Must be
+	 * less or equal to mp_stack::size member.
+	 */
+	int used;
+	/**
+	 * Array of size mp_stack::size of mp_frames.
+	 */
+	struct mp_frame *frames;
+};
+
+/**
+ * \brief Initialize mp_stack \a stack of specified size \a size
+ * and user-allocated array \a frames.
+ * The \a frames allocation must have at least \a size mp_frame
+ * items.
+ * \param stack - the pointer to a mp_stack to initialize.
+ * \param size - stack size, count of stack::frames to use.
+ * \param frames - mp_frame preallocated array of size \a size
+ *                 of struct mp_frame items
+ */
+MP_PROTO void
+mp_stack_create(struct mp_stack *stack, int size, struct mp_frame *frames);
+
+/**
+ * \brief Test if mp_stack \a stack is empty.
+ * \param stack - the pointer to a mp_stack to a stack to test.
+ * \retval true if mp_stack is empty, false otherwise.
+ */
+MP_PROTO bool
+mp_stack_is_empty(struct mp_stack *stack);
+
+/**
+ * \brief Test if mp_stack \a stack is full.
+ * \param stack - the pointer to a mp_stack to a stack to test.
+ * \retval true if mp_stack is full, false otherwise.
+ */
+MP_PROTO bool
+mp_stack_is_full(struct mp_stack *stack);
+
+/**
+ * \brief Pop the top mp_stack \a stack frame.
+ * \param stack - the pointer to a mp_stack to operate with.
+ * \pre mp_stack_is_empty(stack) == false
+ */
+MP_PROTO void
+mp_stack_pop(struct mp_stack *stack);
+
+/**
+ * \brief Construct a new mp_frame and push it on to mp_stack
+ * \a stack.
+ * \param stack - the pointer to a stack to operate with.
+ * \param type - the type of mp_frame to create.
+ * \param count - the count of itemes of mp_frame to create.
+ * \pre mp_stack_is_full(stack) == false
+ */
+MP_PROTO void
+mp_stack_push(struct mp_stack *stack, enum mp_type type, int count);
+
+/**
+ * \brief Get type attribute of the \a stack top frame.
+ * \param stack - the pointer to a stack to operate with.
+ * \retval enum mp_type value - the top stack frame type.
+ * \pre mp_stack_is_empty(stack) == false
+ */
+MP_PROTO enum mp_type
+mp_stack_type(struct mp_stack *stack);
+
+/**
+ * \brief Get count attribute of the \a stack top frame.
+ * \param stack - the pointer to a stack to operate with.
+ * \retval count - the top stack frame items count.
+ * \pre mp_stack_is_empty(stack) == false
+ */
+MP_PROTO int
+mp_stack_count(struct mp_stack *stack);
+
+/**
+ * \brief Advance curr attribute of the \a stack top frame.
+ * \param stack - the pointer to a stack to operate with.
+ * \retval index of the element to process if the top
+ *         mp_frame::curr is less than top mp_frame::count field.
+ *         -1 otherwise.
+ * \pre mp_stack_is_empty(stack) == false
+ */
+MP_PROTO int
+mp_stack_advance(struct mp_stack *stack);
+
 /*
  * }}}
  */
@@ -2200,6 +2327,66 @@ mp_check(const char **data, const char *end)
 	assert(*data <= end);
 #undef MP_CHECK_LEN
 	return 0;
+}
+
+MP_IMPL void
+mp_stack_create(struct mp_stack *stack, int size, struct mp_frame *frames)
+{
+	stack->frames = frames;
+	stack->size = size;
+	stack->used = 0;
+}
+
+MP_IMPL bool
+mp_stack_is_empty(struct mp_stack *stack)
+{
+	return stack->used == 0;
+}
+
+MP_IMPL bool
+mp_stack_is_full(struct mp_stack *stack)
+{
+	return stack->used >= stack->size;
+}
+
+MP_IMPL void
+mp_stack_pop(struct mp_stack *stack)
+{
+	assert(!mp_stack_is_empty(stack));
+	--stack->used;
+}
+
+MP_IMPL void
+mp_stack_push(struct mp_stack *stack, enum mp_type type, int count)
+{
+	assert(!mp_stack_is_full(stack));
+	int idx = stack->used++;
+	stack->frames[idx].type = type;
+	stack->frames[idx].count = count;
+	stack->frames[idx].curr = -1;
+}
+
+MP_IMPL enum mp_type
+mp_stack_type(struct mp_stack *stack)
+{
+	assert(!mp_stack_is_empty(stack));
+	return stack->frames[stack->used - 1].type;
+}
+
+MP_IMPL int
+mp_stack_count(struct mp_stack *stack)
+{
+	return stack->frames[stack->used - 1].count;
+}
+
+MP_IMPL int
+mp_stack_advance(struct mp_stack *stack)
+{
+	assert(!mp_stack_is_empty(stack));
+	struct mp_frame *frame = &stack->frames[stack->used - 1];
+	if (frame->curr < frame->count - 1)
+		return ++frame->curr;
+	return -1;
 }
 
 /** \endcond */
