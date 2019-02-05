@@ -1226,11 +1226,11 @@ struct mp_frame {
 };
 
 /**
- * Stack of map/array descriptors mp_frame to do complex msgpack
- * parse. The structure is needed in order to facilitate
- * decoding nested MP_ARRAY and MP_MAP msgpack containers without
- * recursion. This allows to determine that the parsing of the
- * current container is complete.
+ * Stack of map/array descriptors mp_frame to preserve traversal
+ * state when parsing nested array/map in a msgpack stream.
+ * Makes it possible to parse nested MP_ARRAY and MP_MAP msgpack
+ * containers without recursion and easily determine that
+ * the container under the parsing cursor is complete.
 */
 struct mp_stack {
 	/**
@@ -1250,7 +1250,7 @@ struct mp_stack {
 };
 
 /**
- * \brief Initialize mp_stack \a stack of specified size \a size
+ * \brief Initialize mp_stack \a stack with specified size \a size
  * and user-allocated array \a frames.
  * The \a frames allocation must have at least \a size mp_frame
  * items.
