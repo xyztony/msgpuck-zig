@@ -306,16 +306,16 @@ next:										\
 		return -1;							\
 	}									\
 	while (!mp_stack_is_empty(&stack)) {					\
-		enum mp_type type = mp_stack_type(&stack);			\
-		int curr = mp_stack_advance(&stack);				\
-		if (curr == 0 || mp_stack_count(&stack) == 0)			\
-			PRINTF(type == MP_ARRAY ? "[" : "{");			\
-		if (curr == -1) {						\
-			PRINTF(type == MP_ARRAY ? "]" : "}");			\
+		struct mp_frame *frame = mp_stack_top(&stack);			\
+		if (frame->idx < 0)						\
+			PRINTF(frame->type == MP_ARRAY ? "[" : "{");		\
+		if (!mp_frame_advance(frame)) {					\
+			PRINTF(frame->type == MP_ARRAY ? "]" : "}");		\
 			mp_stack_pop(&stack);					\
 			continue;						\
-		} else if (curr != 0) {						\
-			PRINTF(type == MP_MAP && curr % 2 == 1 ? ": " : ", ");	\
+		} else if (frame->idx != 0) {					\
+			PRINTF(frame->type == MP_MAP && frame->idx % 2 == 1 ?	\
+			       ": " : ", ");					\
 		}								\
 		goto next;							\
 	}									\

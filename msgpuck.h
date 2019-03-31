@@ -1222,7 +1222,7 @@ struct mp_frame {
 	 * Index of currently processing item. Must be less than
 	 * mp_frame::count member.
 	 */
-	int curr;
+	int idx;
 };
 
 /**
@@ -1279,6 +1279,14 @@ MP_PROTO bool
 mp_stack_is_full(struct mp_stack *stack);
 
 /**
+ * \brief Return the top mp_stack \a stack frame.
+ * \param stack - the pointer to a mp_stack to operate with.
+ * \pre mp_stack_is_empty(stack) == false
+ */
+MP_PROTO struct mp_frame *
+mp_stack_top(struct mp_stack *stack);
+
+/**
  * \brief Pop the top mp_stack \a stack frame.
  * \param stack - the pointer to a mp_stack to operate with.
  * \pre mp_stack_is_empty(stack) == false
@@ -1298,33 +1306,13 @@ MP_PROTO void
 mp_stack_push(struct mp_stack *stack, enum mp_type type, int count);
 
 /**
- * \brief Get type attribute of the \a stack top frame.
- * \param stack - the pointer to a stack to operate with.
- * \retval enum mp_type value - the top stack frame type.
- * \pre mp_stack_is_empty(stack) == false
+ * \brief Advance idx attribute of the \a frame.
+ * \param frame - the frame pointer to operate with.
+ * \retval true when mp_frame::idx is less than  mp_frame::count.
+ *         false otherwise.
  */
-MP_PROTO enum mp_type
-mp_stack_type(struct mp_stack *stack);
-
-/**
- * \brief Get count attribute of the \a stack top frame.
- * \param stack - the pointer to a stack to operate with.
- * \retval count - the top stack frame items count.
- * \pre mp_stack_is_empty(stack) == false
- */
-MP_PROTO int
-mp_stack_count(struct mp_stack *stack);
-
-/**
- * \brief Advance curr attribute of the \a stack top frame.
- * \param stack - the pointer to a stack to operate with.
- * \retval index of the element to process if the top
- *         mp_frame::curr is less than top mp_frame::count field.
- *         -1 otherwise.
- * \pre mp_stack_is_empty(stack) == false
- */
-MP_PROTO int
-mp_stack_advance(struct mp_stack *stack);
+MP_PROTO bool
+mp_frame_advance(struct mp_frame *frame);
 
 /*
  * }}}
@@ -2349,6 +2337,13 @@ mp_stack_is_full(struct mp_stack *stack)
 	return stack->used >= stack->size;
 }
 
+MP_IMPL struct mp_frame *
+mp_stack_top(struct mp_stack *stack)
+{
+	assert(!mp_stack_is_empty(stack));
+	return &stack->frames[stack->used - 1];
+}
+
 MP_IMPL void
 mp_stack_pop(struct mp_stack *stack)
 {
@@ -2363,30 +2358,16 @@ mp_stack_push(struct mp_stack *stack, enum mp_type type, int count)
 	int idx = stack->used++;
 	stack->frames[idx].type = type;
 	stack->frames[idx].count = count;
-	stack->frames[idx].curr = -1;
+	stack->frames[idx].idx = -1;
 }
 
-MP_IMPL enum mp_type
-mp_stack_type(struct mp_stack *stack)
+MP_IMPL bool
+mp_frame_advance(struct mp_frame *frame)
 {
-	assert(!mp_stack_is_empty(stack));
-	return stack->frames[stack->used - 1].type;
-}
-
-MP_IMPL int
-mp_stack_count(struct mp_stack *stack)
-{
-	return stack->frames[stack->used - 1].count;
-}
-
-MP_IMPL int
-mp_stack_advance(struct mp_stack *stack)
-{
-	assert(!mp_stack_is_empty(stack));
-	struct mp_frame *frame = &stack->frames[stack->used - 1];
-	if (frame->curr < frame->count - 1)
-		return ++frame->curr;
-	return -1;
+	if (frame->idx >= frame->count - 1)
+		return false;
+	++frame->idx;
+	return true;
 }
 
 /** \endcond */
