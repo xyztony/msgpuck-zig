@@ -972,6 +972,86 @@ test_mp_print()
 	return check_plan();
 }
 
+enum mp_ext_test_type {
+	MP_EXT_TEST_PLAIN,
+	MP_EXT_TEST_MSGPACK,
+};
+
+static int
+mp_fprint_ext_test(FILE *file, const char **data, int depth)
+{
+	int8_t type;
+	uint32_t len = mp_decode_extl(data, &type);
+	const char *ext = *data;
+	*data += len;
+	switch(type) {
+	case MP_EXT_TEST_PLAIN:
+		return fprintf(file, "%.*s", len, ext);
+	case MP_EXT_TEST_MSGPACK:
+		return mp_fprint_recursion(file, &ext, depth);
+	}
+	return fprintf(file, "undefined");
+}
+
+static int
+mp_snprint_ext_test(char *buf, int size, const char **data, int depth)
+{
+	int8_t type;
+	uint32_t len = mp_decode_extl(data, &type);
+	const char *ext = *data;
+	*data += len;
+	switch(type) {
+	case MP_EXT_TEST_PLAIN:
+		return snprintf(buf, size, "%.*s", len, ext);
+	case MP_EXT_TEST_MSGPACK:
+		return mp_snprint_recursion(buf, size, &ext, depth);
+	}
+	return snprintf(buf, size, "undefined");
+}
+
+static int
+test_mp_print_ext(void)
+{
+	plan(5);
+	header();
+	mp_snprint_ext = mp_snprint_ext_test;
+	mp_fprint_ext = mp_fprint_ext_test;
+
+	char *pos = buf;
+	const char *plain = "plain-str";
+	size_t plain_len = strlen(plain);
+	pos = mp_encode_array(pos, 4);
+	pos = mp_encode_uint(pos, 100);
+	pos = mp_encode_ext(pos, MP_EXT_TEST_PLAIN, plain, plain_len);
+	pos = mp_encode_extl(pos, MP_EXT_TEST_MSGPACK,
+			     mp_sizeof_str(plain_len));
+	pos = mp_encode_str(pos, plain, plain_len);
+	pos = mp_encode_uint(pos, 200);
+
+	int size = mp_snprint(NULL, 0, buf);
+	int real_size = mp_snprint(str, sizeof(str), buf);
+	is(size, real_size, "mp_snrpint size match");
+	const char *expected = "[100, plain-str, \"plain-str\", 200]";
+	is(strcmp(str, expected), 0, "str is correct");
+
+	FILE *tmpf = tmpfile();
+	if (tmpf == NULL)
+		abort();
+	real_size = mp_fprint(tmpf, buf);
+	is(size, real_size, "mp_fprint size match");
+	rewind(tmpf);
+	real_size = (int) fread(str, 1, sizeof(str), tmpf);
+	is(real_size, size, "mp_fprint written correct number of bytes");
+	str[real_size] = 0;
+	is(strcmp(str, expected), 0, "str is correct");
+	fclose(tmpf);
+
+	mp_snprint_ext = mp_snprint_ext_default;
+	mp_fprint_ext = mp_fprint_ext_default;
+	footer();
+	return check_plan();
+}
+
 int
 test_mp_check()
 {
@@ -1229,7 +1309,7 @@ test_overflow()
 
 int main()
 {
-	plan(22);
+	plan(23);
 	test_uints();
 	test_ints();
 	test_bools();
@@ -1249,6 +1329,7 @@ int main()
 	test_compare_uints();
 	test_format();
 	test_mp_print();
+	test_mp_print_ext();
 	test_mp_check();
 	test_numbers();
 	test_overflow();

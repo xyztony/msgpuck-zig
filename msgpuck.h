@@ -983,6 +983,9 @@ mp_vformat(char *data, size_t data_size, const char *format, va_list args);
  * a standard JSON, printing a MessagePack buffer, having MP_EXT
  * in it, may lead to an invalid JSON.
  *
+ * However MP_EXT may be printed differently in case a proper
+ * virtual serializer was installed. \sa mp_fprint_ext_f.
+ *
  * \param file - pointer to file (or NULL for stdout)
  * \param data - pointer to buffer containing msgpack object
  * \retval >=0 - the number of bytes printed
@@ -991,6 +994,34 @@ mp_vformat(char *data, size_t data_size, const char *format, va_list args);
  */
 int
 mp_fprint(FILE *file, const char *data);
+
+/**
+ * \brief Print MsgPack data to \a file using JSON-like format.
+ * Works exactly like \sa mp_fprint(), but allows to specify max
+ * depth, and changes \a data parameter. Intended to be used for
+ * MsgPack serialization recursion.
+ */
+int
+mp_fprint_recursion(FILE *file, const char **data, int depth);
+
+typedef int (*mp_fprint_ext_f)(FILE *file, const char **data, int depth);
+
+/**
+ * \brief Function called when need to serialize MP_EXT into a
+ * file.
+ */
+extern mp_fprint_ext_f mp_fprint_ext;
+
+/**
+ * \brief Default MP_EXT serializer into a file. Skips the object,
+ * ignores all the other arguments, and writes
+ *
+ *     (extension: type <type>, len <len>)
+ *
+ * \sa mp_fprint().
+ */
+int
+mp_fprint_ext_default(FILE *file, const char **data, int depth);
 
 /**
  * \brief format MsgPack data to \a buf using JSON-like format.
@@ -1010,6 +1041,35 @@ mp_fprint(FILE *file, const char *data);
  */
 int
 mp_snprint(char *buf, int size, const char *data);
+
+/**
+ * \brief Format MsgPack data to \a buf using JSON-like format.
+ * Works exactly like \sa mp_snprint(), but allows to specify max
+ * depth, and changes \a data parameter. Intended to be used for
+ * MsgPack serialization recursion.
+ */
+int
+mp_snprint_recursion(char *buf, int size, const char **data, int depth);
+
+typedef int (*mp_snprint_ext_f)(char *buf, int size, const char **data,
+				int depth);
+
+/**
+ * \brief Function called when need to serialize MP_EXT into a
+ * string.
+ */
+extern mp_snprint_ext_f mp_snprint_ext;
+
+/**
+ * \brief Default MP_EXT serializer into a string. Skips the
+ * object, ignores all the other arguments, and prints
+ *
+ *     (extension: type <type>, len <len>)
+ *
+ * \sa mp_snprint().
+ */
+int
+mp_snprint_ext_default(char *buf, int size, const char **data, int depth);
 
 /**
  * \brief Check that \a cur buffer has enough bytes to decode a string header

@@ -33,6 +33,32 @@
 #define MP_LIBRARY 1
 #include "msgpuck.h"
 
+int
+mp_fprint_ext_default(FILE *file, const char **data, int depth)
+{
+	(void) depth;
+	int8_t type;
+	uint32_t len;
+	mp_decode_ext(data, &type, &len);
+	return fprintf(file, "(extension: type %d, len %u)", (int)type,
+		      (unsigned)len);
+}
+
+int
+mp_snprint_ext_default(char *buf, int size, const char **data, int depth)
+{
+	(void) depth;
+	int8_t type;
+	uint32_t len;
+	mp_decode_ext(data, &type, &len);
+	return snprintf(buf, size, "(extension: type %d, len %u)", (int)type,
+			(unsigned)len);
+}
+
+mp_fprint_ext_f mp_fprint_ext = mp_fprint_ext_default;
+
+mp_snprint_ext_f mp_snprint_ext = mp_snprint_ext_default;
+
 size_t
 mp_vformat(char *data, size_t data_size, const char *format, va_list vl)
 {
@@ -316,21 +342,15 @@ mp_format(char *data, size_t data_size, const char *format, ...)
 		PRINTF("%lg", mp_decode_double(data));				\
 		break;								\
 	case MP_EXT:								\
-	{									\
-		int8_t type;							\
-		uint32_t len;							\
-		mp_decode_ext(data, &type, &len);				\
-		PRINTF("(extension: type %d, len %u)", (int)type,		\
-		       (unsigned)len);						\
+		PRINT_EXT(data);						\
 		break;								\
-	}									\
 	default:								\
 		mp_unreachable();						\
 		return -1;							\
 	}									\
 }
 
-static int
+int
 mp_fprint_recursion(FILE *file, const char **data, int depth)
 {
 	int total_bytes = 0;
@@ -340,12 +360,14 @@ mp_fprint_recursion(FILE *file, const char **data, int depth)
 		return -1;							\
 	total_bytes += bytes;							\
 } while (0)
+#define PRINT_EXT(...) HANDLE(mp_fprint_ext, __VA_ARGS__, depth)
 #define PRINT(...) HANDLE(fprintf, __VA_ARGS__)
 #define SELF(...) HANDLE(mp_fprint_recursion, __VA_ARGS__, depth)
 MP_PRINT(SELF, PRINT)
 #undef HANDLE
 #undef SELF
 #undef PRINT
+#undef PRINT_EXT
 	return total_bytes;
 }
 
@@ -358,7 +380,7 @@ mp_fprint(FILE *file, const char *data)
 	return res;
 }
 
-static int
+int
 mp_snprint_recursion(char *buf, int size, const char **data, int depth)
 {
 	int total_bytes = 0;
@@ -376,12 +398,14 @@ mp_snprint_recursion(char *buf, int size, const char **data, int depth)
 		size = 0;							\
 	}									\
 } while (0)
+#define PRINT_EXT(...) HANDLE(mp_snprint_ext, __VA_ARGS__, depth)
 #define PRINT(...) HANDLE(snprintf, __VA_ARGS__)
 #define SELF(...) HANDLE(mp_snprint_recursion, __VA_ARGS__, depth)
 MP_PRINT(SELF, PRINT)
 #undef HANDLE
 #undef SELF
 #undef PRINT
+#undef PRINT_EXT
 	return total_bytes;
 }
 #undef MP_PRINT
