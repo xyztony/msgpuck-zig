@@ -970,7 +970,19 @@ mp_vformat(char *data, size_t data_size, const char *format, va_list args);
 
 /**
  * \brief print MsgPack data \a file using JSON-like format.
- * MP_EXT is printed as "undefined"
+ * MP_EXT is printed as a non-standard JSON 'list':
+ *
+ *     (extension: type <type>, len <len>)
+ *
+ * For example:
+ *
+ *     (extension: type 10, len 35)
+ *
+ * Type is the MP_EXT type. Length is of the MP_EXT body, not
+ * counting its header. Since the 'list' and what is in it is not
+ * a standard JSON, printing a MessagePack buffer, having MP_EXT
+ * in it, may lead to an invalid JSON.
+ *
  * \param file - pointer to file (or NULL for stdout)
  * \param data - pointer to buffer containing msgpack object
  * \retval >=0 - the number of bytes printed
@@ -982,6 +994,8 @@ mp_fprint(FILE *file, const char *data);
 
 /**
  * \brief format MsgPack data to \a buf using JSON-like format.
+ * Behaves the same as \sa mp_fprint(), but with snprintf()
+ * semantics.
  * \sa mp_fprint()
  * \param buf - buffer to use
  * \param size - buffer size. This function write at most size bytes

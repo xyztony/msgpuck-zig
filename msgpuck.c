@@ -316,9 +316,14 @@ mp_format(char *data, size_t data_size, const char *format, ...)
 		PRINTF("%lg", mp_decode_double(data));				\
 		break;								\
 	case MP_EXT:								\
-		mp_next(data);							\
-		PRINTF("undefined");						\
+	{									\
+		int8_t type;							\
+		uint32_t len;							\
+		mp_decode_ext(data, &type, &len);				\
+		PRINTF("(extension: type %d, len %u)", (int)type,		\
+		       (unsigned)len);						\
 		break;								\
+	}									\
 	default:								\
 		mp_unreachable();						\
 		return -1;							\
