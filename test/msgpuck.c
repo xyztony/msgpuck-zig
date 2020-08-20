@@ -939,7 +939,7 @@ test_mp_print()
 	is(rc, -1, "mp_fprint I/O error");
 
 	/* Test mp_snprint max nesting depth. */
-	int mp_buff_sz = MP_PRINT_MAX_DEPTH * mp_sizeof_array(1) +
+	int mp_buff_sz = (MP_PRINT_MAX_DEPTH + 1) * mp_sizeof_array(1) +
 			 mp_sizeof_uint(1);
 	int exp_str_sz = 2 * (MP_PRINT_MAX_DEPTH + 1) + 3 + 1;
 	char *mp_buff = malloc(mp_buff_sz);
