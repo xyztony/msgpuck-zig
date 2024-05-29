@@ -15,9 +15,12 @@ install_manifest.txt
 Makefile
 Doxyfile.html
 Doxyfile.man
+.DS_Store
 debian/*
 VERSION
 ./build
 /build
 ./test_build
 /test_build
+zig-out/
+zig-cache/
